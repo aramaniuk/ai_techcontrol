@@ -1,66 +1,74 @@
 import streamlit as st
 from openai import OpenAI
 import base64
-from io import BytesIO
-import fitz  # This will now correctly import PyMuPDF after the pip changes
-
+import fitz  # PyMuPDF
+import os
 
 # Page configuration
-st.set_page_config(page_title="Construction Spec Validator", layout="wide")
+st.set_page_config(page_title="AI помощник инженера-проектировщика", layout="wide")
+
+def get_regulations():
+    """Reads the local regulations file."""
+    reg_path = "snips/СН-РК-5.03-07-2013.txt"
+    if os.path.exists(reg_path):
+        with open(reg_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "No standard regulations file found."
 
 # Sidebar for inputs
 with st.sidebar:
     st.title("Settings")
-    
-    # API Key input (standard practice for local/dev Streamlit apps)
-    api_key = st.text_input("Enter OpenAI API Key", type="password")
-    
+
     # File upload
-    uploaded_file = st.file_uploader("Upload Technical Specification", type=['txt', 'pdf', 'md', 'png', 'jpg', 'jpeg'])
+    uploaded_file = st.file_uploader("Загрузите проектную документацию", type=['txt', 'pdf', 'md', 'png', 'jpg', 'jpeg'])
 
     # Analysis options
     analysis_option = st.selectbox(
-        "Select Analysis Type",
+        "Выберите тип анализа",
         options=["Structural Integrity Check", "Material Standard Compliance", "Safety Regulation Audit"],
         index=0
     )
     
     # Run button
-    analyze_button = st.button("Start Analysis", disabled=not uploaded_file)
+    analyze_button = st.button("Запустить анализ", disabled=not uploaded_file)
 
 # Main Pane
-st.title("Construction Project Analysis")
+st.title("AI анализ структуры строительного проекта")
 
 if analyze_button:
+    api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+
     if not api_key:
-        st.error("Please provide an OpenAI API Key in the sidebar.")
+        st.error("Please provide an OpenAI API Key.")
     else:
         try:
             client = OpenAI(api_key=api_key)
-                
-                # Read file content
+            regulations_content = get_regulations()
+
+            # Read file content
             file_bytes = uploaded_file.read()
             file_extension = uploaded_file.name.split('.')[-1].lower()
 
-            with st.spinner("Analyzing specification against standards..."):
+            with st.spinner("Анализирую спецификацию относительно стандартов..."):
                 prompt_text = (
-                    f"Analyze the following construction technical specification based on: {analysis_option}.\n"
-                    f"Validate it against standard construction industry benchmarks and highlight discrepancies.\n"
-                    f"Parse both text and graphic materials in the document."
+                    f"You are provided with a construction technical specification and a set of standard regulations.\n\n"
+                    f"REGULATIONS FOR REFERENCE:\n{regulations_content}\n\n"
+                    f"TASK:\nAnalyze the uploaded specification based on: {analysis_option}.\n"
+                    f"Identify if the specification complies with the regulations provided above. "
+                    f"Highlight specific discrepancies or safety risks found in the document (text or images). Response should be generated in Russian"
                 )
 
                 content = [{"type": "text", "text": prompt_text}]
 
                 if file_extension == 'pdf':
-                    # This call will now work correctly
                     pdf_doc = fitz.open(stream=file_bytes, filetype="pdf")
                     for page_index in range(len(pdf_doc)):
                         page = pdf_doc.load_page(page_index)
                         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                        
+                    
                         img_bytes = pix.tobytes("jpeg")
                         base_64_page = base64.b64encode(img_bytes).decode('utf-8')
-                        
+                    
                         content.append({
                             "type": "image_url",
                             "image_url": {
@@ -69,7 +77,6 @@ if analyze_button:
                             }
                         })
                     pdf_doc.close()
-                # rest of the code
                 elif file_extension in ['png', 'jpg', 'jpeg']:
                     # Handle standard image formats
                     base64_file = base64.b64encode(file_bytes).decode('utf-8')
@@ -90,7 +97,7 @@ if analyze_button:
 
                 # LLM Call
                 response = client.chat.completions.create(
-                    model="gpt-4o",
+                    model="gpt-5.2-2025-12-11",
                     messages=[
                         {"role": "system", "content": "You are an expert construction engineer and auditor."},
                         {"role": "user", "content": content}
@@ -104,4 +111,4 @@ if analyze_button:
         except Exception as e:
             st.error(f"An error occurred: {e}")
 else:
-    st.info("Upload a file and select an analysis type from the sidebar to begin.")
+    st.info("Загрузите проектный файл и выберите тип анализа для начала работы....")
