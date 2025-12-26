@@ -16,7 +16,7 @@ class LLMFactory:
             # Quick start, high performance
             # GPT-4o is multimodal by default, handling both text and vision
             return ChatOpenAI(
-                model="gpt-4o",
+                model="gpt-5.2-2025-12-11",
                 temperature=0,
                 api_key=st.secrets["openai"]["OPENAI_API_KEY"]
             )
